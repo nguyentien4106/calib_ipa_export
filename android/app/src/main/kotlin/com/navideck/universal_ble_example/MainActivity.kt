@@ -1,4 +1,4 @@
-package com.example.ipa_testing_github_action
+package com.navideck.universal_ble_example
 
 import io.flutter.embedding.android.FlutterActivity
 
