@@ -26,15 +26,18 @@ class PeripheralDetailPage extends StatefulWidget {
 
 class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
   bool isConnected = false;
+  bool isSubscribe = false;
+  String sc = '';
   GlobalKey<FormState> valueFormKey = GlobalKey<FormState>();
   List<BleService> discoveredServices = [];
   final List<String> _logs = [];
   final binaryCode = TextEditingController();
- 	String dropdownValue = 'RANDOM';
+ 	String modeValue = 'RANDOM';
 	String colorOnValue = 'RED';
 	String colorOffValue = 'OFF';
   final TextEditingController timeOnController = TextEditingController();
   final TextEditingController timeOffController = TextEditingController();
+  final TextEditingController timePlayController = TextEditingController();
 
   ({
     BleService service,
@@ -84,12 +87,17 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
     }
   }
 
-  void _handleValueChange(
-      String deviceId, String characteristicId, Uint8List value) {
+  void _handleValueChange(String deviceId, String characteristicId, Uint8List value) {
     String s = String.fromCharCodes(value);
-    String data = '$s\nraw :  ${value.toString()}';
+    String score = '';
+    if(s.startsWith('score')){
+      score = s.split('~')[1];
+    }
+    setState(() {
+      sc = score;
+    });
     print('_handleValueChange $deviceId, $characteristicId, $s');
-    _addLog("Value", data);
+    _addLog("Value", score);
   }
 
   void _handlePairingStateChange(String deviceId, bool isPaired) {
@@ -137,7 +145,7 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
   }
 
   Uint8List _createRequest(text){
-    return Uint8List.fromList(hex.decode(text));
+    return Uint8List.fromList(text.codeUnits);
   }
 
   Future<void> _writeValue() async {
@@ -174,9 +182,7 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
   }
 
   Future<bool> _write(value) async {
-    if (selectedCharacteristic == null ||
-        !valueFormKey.currentState!.validate() ||
-        binaryCode.text.isEmpty) {
+    if (selectedCharacteristic == null) {
       return false;
     }
 
@@ -235,8 +241,23 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
   }
   
   Future<void> _stop() async{
-		Uint8List command = _createRequest("~s");
+		Uint8List command = _createRequest("~E");
     bool result = await _write(command);
+    _addLog("STOP", result);
+	}
+
+  Future<void> _start() async{
+		Uint8List command = _createRequest("~B");
+    bool result = await _write(command);
+    _addLog("Start", result);
+	}
+
+  Future<void> _setup() async{
+    String value = '${modeValue[0]}~${timeOnController.text}~${timePlayController.text}~${timeOffController.text}~${colorOnValue[0]}~${colorOffValue[0]}';
+		print(value);
+    Uint8List command = _createRequest(value);
+    bool result = await _write(command);
+    _addLog("SETUP", result);
 	}
 
   @override
@@ -319,6 +340,29 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
                                   UniversalBle.disconnect(widget.deviceId);
                                 },
                               ),
+                              PlatformButton(
+                                enabled: isConnected &&
+                                    discoveredServices.isNotEmpty &&
+                                    _hasSelectedCharacteristicProperty([
+                                      CharacteristicProperty.notify,
+                                      CharacteristicProperty.indicate
+                                    ]),
+                                onPressed: () => {
+                                  _setBleInputProperty(BleInputProperty.notification)
+                                },
+                                text: 'Subscribe',
+                              ),
+                              PlatformButton(
+                                enabled: isConnected &&
+                                    discoveredServices.isNotEmpty &&
+                                    _hasSelectedCharacteristicProperty([
+                                      CharacteristicProperty.notify,
+                                      CharacteristicProperty.indicate
+                                    ]),
+                                onPressed: () => _setBleInputProperty(
+                                    BleInputProperty.disabled),
+                                text: 'Unsubscribe',
+                              ),
                             ],
                           ),
                         ),
@@ -350,39 +394,31 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
                                   ),
                                 ),
                               ),
-
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.center,
+                                      children: [
+                                        const Text(
+                                          'Score',
+                                          style: TextStyle(fontSize: 16),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          sc,
+                                          style: TextStyle(fontSize: 50),
+                                        )
+                                      ],
+                                    ),
+                                  ),
+                                  
+                                ],
+                              ),
                         if (_hasSelectedCharacteristicProperty([
                           CharacteristicProperty.write,
                           CharacteristicProperty.writeWithoutResponse
                         ]))
-                          // Padding(
-                          //   padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                          //   child: Form(
-                          //     key: valueFormKey,
-                          //     child: Padding(
-                          //       padding: const EdgeInsets.all(8.0),
-                          //       child: TextFormField(
-                          //         controller: binaryCode,
-                          //         validator: (value) {
-                          //           if (value == null || value.isEmpty) {
-                          //             return 'Please enter a value';
-                          //           }
-                          //           try {
-                          //             hex.decode(binaryCode.text);
-                          //             return null;
-                          //           } catch (e) {
-                          //             return 'Please enter a valid hex value ( without spaces or 0x (e.g. F0BB) )';
-                          //           }
-                          //         },
-                          //         decoration: const InputDecoration(
-                          //           hintText:
-                          //               "Enter Hex values without spaces or 0x (e.g. F0BB)",
-                          //           border: OutlineInputBorder(),
-                          //         ),
-                          //       ),
-                          //     ),
-                          //   ),
-                          // ),
                           Padding(
                           padding: const EdgeInsets.all(16.0),
                           child: Column(
@@ -390,7 +426,7 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
                             children: <Widget>[
                               // Dropdown
                               Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                                crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
                                   const Text(
                                     'Select Mode:',
@@ -398,10 +434,10 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
                                   ),
                                   const SizedBox(height: 8),
                                   DropdownButton<String>(
-                                    value: dropdownValue,
+                                    value: modeValue,
                                     onChanged: (String? newValue) {
                                       setState(() {
-                                        dropdownValue = newValue!;
+                                        modeValue = newValue!;
                                       });
                                     },
                                     items: <String>['RANDOM', 'FREQUENTLY']
@@ -418,7 +454,7 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
                                 children: [
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment: CrossAxisAlignment.center,
                                       children: [
                                         const Text(
                                           'Color On',
@@ -482,16 +518,16 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         const Text(
-                                          'Time Off',
+                                          'Time Play',
                                           style: TextStyle(fontSize: 16),
                                         ),
                                         const SizedBox(height: 8),
                                         TextField(
-                                          controller: timeOnController,
+                                          controller: timePlayController,
                                           keyboardType: TextInputType.number,
                                           decoration: const InputDecoration(
                                             border: OutlineInputBorder(),
-                                            hintText: '100ms',
+                                            hintText: 's',
                                           ),
                                         ),
                                       ],
@@ -508,11 +544,32 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
                                         ),
                                         const SizedBox(height: 8),
                                         TextField(
+                                          controller: timeOnController,
+                                          keyboardType: TextInputType.number,
+                                          decoration: const InputDecoration(
+                                            border: OutlineInputBorder(),
+                                            hintText: 's',
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16), // Space between two fields
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          'Time Off',
+                                          style: TextStyle(fontSize: 16),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        TextField(
                                           controller: timeOffController,
                                           keyboardType: TextInputType.number,
                                           decoration: const InputDecoration(
                                             border: OutlineInputBorder(),
-                                            hintText: 'ms',
+                                            hintText: 's',
                                           ),
                                         ),
                                       ],
@@ -530,16 +587,12 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
                                   ),
                                   const SizedBox(width: 26), // Space between two fields
                                   ElevatedButton(
-                                    onPressed: () {
-                                      final value1 = timeOnController.text;
-                                      final value2 = timeOffController.text;
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                              'Dropdown: $dropdownValue, Value1: $value1, Value2: $value2'),
-                                        ),
-                                      );
-                                    },
+                                    onPressed: _start,
+                                    child: const Text('Start'),
+                                  ),
+                                  const SizedBox(width: 26), // Space between two fields
+                                  ElevatedButton(
+                                    onPressed: _setup,
                                     child: const Text('Setup'),
                                   ),
                                 ],
@@ -548,120 +601,6 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
                           ),
                         ),
                         const Divider(),
-                        Padding(
-                          padding: const EdgeInsets.all(8.0),
-                          child: ResponsiveButtonsGrid(
-                            children: [
-                              PlatformButton(
-                                onPressed: () async {
-                                  _discoverServices();
-                                },
-                                enabled: isConnected,
-                                text: 'Discover Services',
-                              ),
-                              // PlatformButton(
-                              //   onPressed: () async {
-                              //     _addLog(
-                              //       'ConnectionState',
-                              //       await UniversalBle.getConnectionState(
-                              //         widget.deviceId,
-                              //       ),
-                              //     );
-                              //   },
-                              //   text: 'Connection State',
-                              // ),
-                              // if (BleCapabilities.supportsRequestMtuApi)
-                              //   PlatformButton(
-                              //     enabled: isConnected,
-                              //     onPressed: () async {
-                              //       int mtu = await UniversalBle.requestMtu(
-                              //           widget.deviceId, 247);
-                              //       _addLog('MTU', mtu);
-                              //     },
-                              //     text: 'Request Mtu',
-                              //   ),
-                              // PlatformButton(
-                              //   enabled: isConnected &&
-                              //       discoveredServices.isNotEmpty &&
-                              //       _hasSelectedCharacteristicProperty([
-                              //         CharacteristicProperty.read,
-                              //       ]),
-                              //   onPressed: _readValue,
-                              //   text: 'Read',
-                              // ),
-                              PlatformButton(
-                                enabled: isConnected &&
-                                    discoveredServices.isNotEmpty &&
-                                    _hasSelectedCharacteristicProperty([
-                                      CharacteristicProperty.write,
-                                      CharacteristicProperty.writeWithoutResponse
-                                    ]),
-                                onPressed: _writeValue,
-                                text: 'Write',
-                              ),
-                              PlatformButton(
-                                enabled: isConnected &&
-                                    discoveredServices.isNotEmpty &&
-                                    _hasSelectedCharacteristicProperty([
-                                      CharacteristicProperty.notify,
-                                      CharacteristicProperty.indicate
-                                    ]),
-                                onPressed: () => _setBleInputProperty(
-                                    BleInputProperty.notification),
-                                text: 'Subscribe',
-                              ),
-                              PlatformButton(
-                                enabled: isConnected &&
-                                    discoveredServices.isNotEmpty &&
-                                    _hasSelectedCharacteristicProperty([
-                                      CharacteristicProperty.notify,
-                                      CharacteristicProperty.indicate
-                                    ]),
-                                onPressed: () => _setBleInputProperty(
-                                    BleInputProperty.disabled),
-                                text: 'Unsubscribe',
-                              ),
-                              // PlatformButton(
-                              //   enabled: BleCapabilities.supportsAllPairingKinds,
-                              //   onPressed: () async {
-                              //     try {
-                              //       await UniversalBle.pair(
-                              //         widget.deviceId,
-                              //         // pairingCommand: BleCommand(
-                              //         //   service: "",
-                              //         //   characteristic: "",
-                              //         // ),
-                              //       );
-                              //       _addLog("Pairing Result", true);
-                              //     } catch (e) {
-                              //       _addLog('PairError (${e.runtimeType})', e);
-                              //     }
-                              //   },
-                              //   text: 'Pair',
-                              // ),
-                              // PlatformButton(
-                              //   onPressed: () async {
-                              //     bool? isPaired = await UniversalBle.isPaired(
-                              //       widget.deviceId,
-                              //       // pairingCommand: BleCommand(
-                              //       //   service: "",
-                              //       //   characteristic: "",
-                              //       // ),
-                              //     );
-                              //     _addLog('IsPaired', isPaired);
-                              //   },
-                              //   text: 'IsPaired',
-                              // ),
-                              // PlatformButton(
-                              //   onPressed: () async {
-                              //     await UniversalBle.unpair(widget.deviceId);
-                              //   },
-                              //   text: 'Unpair',
-                              // ),
-                            ],
-                          ),
-                        ),
-                        // Services
                         if (deviceType != DeviceType.desktop)
                           ServicesListWidget(
                             discoveredServices: discoveredServices,
