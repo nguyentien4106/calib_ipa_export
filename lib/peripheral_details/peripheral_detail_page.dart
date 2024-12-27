@@ -30,6 +30,11 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
   List<BleService> discoveredServices = [];
   final List<String> _logs = [];
   final binaryCode = TextEditingController();
+ 	String dropdownValue = 'RANDOM';
+	String colorOnValue = 'RED';
+	String colorOffValue = 'OFF';
+  final TextEditingController timeOnController = TextEditingController();
+  final TextEditingController timeOffController = TextEditingController();
 
   ({
     BleService service,
@@ -131,6 +136,10 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
     }
   }
 
+  Uint8List _createRequest(text){
+    return Uint8List.fromList(hex.decode(text));
+  }
+
   Future<void> _writeValue() async {
     if (selectedCharacteristic == null ||
         !valueFormKey.currentState!.validate() ||
@@ -164,11 +173,11 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
     }
   }
 
-Future<void> _write(value) async {
+  Future<bool> _write(value) async {
     if (selectedCharacteristic == null ||
         !valueFormKey.currentState!.validate() ||
         binaryCode.text.isEmpty) {
-      return;
+      return false;
     }
 
     // Uint8List value;
@@ -176,7 +185,7 @@ Future<void> _write(value) async {
       // value = Uint8List.fromList(hex.decode(binaryCode.text));
     } catch (e) {
       _addLog('WriteError', "Error parsing hex $e");
-      return;
+      return false;
     }
 
     try {
@@ -191,9 +200,11 @@ Future<void> _write(value) async {
             : BleOutputProperty.withResponse,
       );
       _addLog('Write', value);
+      return true;
     } catch (e) {
       print(e);
       _addLog('WriteError', e);
+      return false;
     }
   }
 
@@ -222,6 +233,11 @@ Future<void> _write(value) async {
       _addLog('NotifyError', e);
     }
   }
+  
+  Future<void> _stop() async{
+		Uint8List command = _createRequest("~s");
+    bool result = await _write(command);
+	}
 
   @override
   Widget build(BuildContext context) {
@@ -339,34 +355,198 @@ Future<void> _write(value) async {
                           CharacteristicProperty.write,
                           CharacteristicProperty.writeWithoutResponse
                         ]))
+                          // Padding(
+                          //   padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                          //   child: Form(
+                          //     key: valueFormKey,
+                          //     child: Padding(
+                          //       padding: const EdgeInsets.all(8.0),
+                          //       child: TextFormField(
+                          //         controller: binaryCode,
+                          //         validator: (value) {
+                          //           if (value == null || value.isEmpty) {
+                          //             return 'Please enter a value';
+                          //           }
+                          //           try {
+                          //             hex.decode(binaryCode.text);
+                          //             return null;
+                          //           } catch (e) {
+                          //             return 'Please enter a valid hex value ( without spaces or 0x (e.g. F0BB) )';
+                          //           }
+                          //         },
+                          //         decoration: const InputDecoration(
+                          //           hintText:
+                          //               "Enter Hex values without spaces or 0x (e.g. F0BB)",
+                          //           border: OutlineInputBorder(),
+                          //         ),
+                          //       ),
+                          //     ),
+                          //   ),
+                          // ),
                           Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                            child: Form(
-                              key: valueFormKey,
-                              child: Padding(
-                                padding: const EdgeInsets.all(8.0),
-                                child: TextFormField(
-                                  controller: binaryCode,
-                                  validator: (value) {
-                                    if (value == null || value.isEmpty) {
-                                      return 'Please enter a value';
-                                    }
-                                    try {
-                                      hex.decode(binaryCode.text);
-                                      return null;
-                                    } catch (e) {
-                                      return 'Please enter a valid hex value ( without spaces or 0x (e.g. F0BB) )';
-                                    }
-                                  },
-                                  decoration: const InputDecoration(
-                                    hintText:
-                                        "Enter Hex values without spaces or 0x (e.g. F0BB)",
-                                    border: OutlineInputBorder(),
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: <Widget>[
+                              // Dropdown
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Select Mode:',
+                                    style: TextStyle(fontSize: 16),
                                   ),
-                                ),
+                                  const SizedBox(height: 8),
+                                  DropdownButton<String>(
+                                    value: dropdownValue,
+                                    onChanged: (String? newValue) {
+                                      setState(() {
+                                        dropdownValue = newValue!;
+                                      });
+                                    },
+                                    items: <String>['RANDOM', 'FREQUENTLY']
+                                        .map<DropdownMenuItem<String>>((String value) {
+                                      return DropdownMenuItem<String>(
+                                        value: value,
+                                        child: Text(value),
+                                      );
+                                    }).toList(),
+                                  ),
+                                ],
                               ),
-                            ),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          'Color On',
+                                          style: TextStyle(fontSize: 16),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        DropdownButton<String>(
+                                          value: colorOnValue,
+                                          onChanged: (String? newValue) {
+                                            setState(() {
+                                              colorOnValue = newValue!;
+                                            });
+                                          },
+                                          items: <String>['RED', 'WHITE', 'YELLOW', 'BLUE']
+                                              .map<DropdownMenuItem<String>>((String value) {
+                                            return DropdownMenuItem<String>(
+                                              value: value,
+                                              child: Text(value),
+                                            );
+                                          }).toList(),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16), // Space between two fields
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          'Color Off',
+                                          style: TextStyle(fontSize: 16),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        DropdownButton<String>(
+                                          value: colorOffValue,
+                                          onChanged: (String? newValue) {
+                                            setState(() {
+                                              colorOffValue = newValue!;
+                                            });
+                                          },
+                                          items: <String>['RED', 'WHITE', 'YELLOW', 'BLUE', 'OFF']
+                                              .map<DropdownMenuItem<String>>((String value) {
+                                            return DropdownMenuItem<String>(
+                                              value: value,
+                                              child: Text(value),
+                                            );
+                                          }).toList(),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 20),
+                              // Row with Two Text Fields
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          'Time Off',
+                                          style: TextStyle(fontSize: 16),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        TextField(
+                                          controller: timeOnController,
+                                          keyboardType: TextInputType.number,
+                                          decoration: const InputDecoration(
+                                            border: OutlineInputBorder(),
+                                            hintText: '100ms',
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16), // Space between two fields
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          'Time On',
+                                          style: TextStyle(fontSize: 16),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        TextField(
+                                          controller: timeOffController,
+                                          keyboardType: TextInputType.number,
+                                          decoration: const InputDecoration(
+                                            border: OutlineInputBorder(),
+                                            hintText: 'ms',
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 20),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                children: [
+                                  ElevatedButton(
+                                    onPressed: _stop,
+                                    child: const Text('Stop'),
+                                  ),
+                                  const SizedBox(width: 26), // Space between two fields
+                                  ElevatedButton(
+                                    onPressed: () {
+                                      final value1 = timeOnController.text;
+                                      final value2 = timeOffController.text;
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                              'Dropdown: $dropdownValue, Value1: $value1, Value2: $value2'),
+                                        ),
+                                      );
+                                    },
+                                    child: const Text('Setup'),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
+                        ),
                         const Divider(),
                         Padding(
                           padding: const EdgeInsets.all(8.0),
