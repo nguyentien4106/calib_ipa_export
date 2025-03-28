@@ -41,6 +41,7 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
   final TextEditingController timeOnController = TextEditingController();
   final TextEditingController timeOffController = TextEditingController();
   final TextEditingController timePlayController = TextEditingController();
+  List<bool> activeNodes = List.generate(20, (index) => true);
 
   ({
     BleService service,
@@ -131,6 +132,23 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
       setState(() {
         falseScore = score;
       });
+    } else if (s.startsWith('act')) {
+      // Handle node activation states
+      try {
+        List<String> values = s.split('~');
+        if (values.length >= 21) {
+          // "act" + 20 values
+          setState(() {
+            // Update all 20 nodes based on received values
+            for (int i = 0; i < 20; i++) {
+              activeNodes[i] =
+                  values[i + 1] == "1"; // Convert "1" to true, "0" to false
+            }
+          });
+        }
+      } catch (e) {
+        print('Error parsing node activation states: $e');
+      }
     }
     print('_handleValueChange $deviceId, $characteristicId, $s');
     _addLog("Value", score);
@@ -325,357 +343,388 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
           )
         ],
       ),
-      body: new GestureDetector(
-        child: ResponsiveView(builder: (_, DeviceType deviceType) {
-          return Row(
+      body: GestureDetector(
+        onTap: () {
+          FocusScope.of(context).requestFocus(new FocusNode());
+        },
+        child: SingleChildScrollView(
+          child: Column(
             children: [
-              if (deviceType == DeviceType.desktop)
-                Expanded(
-                  flex: 1,
-                  child: Container(
-                    color: Theme.of(context).secondaryHeaderColor,
-                    child: discoveredServices.isEmpty
-                        ? const Center(
-                            child: Text('No Services Discovered'),
-                          )
-                        : ServicesListWidget(
-                            discoveredServices: discoveredServices,
-                            scrollable: true,
-                            onTap: (BleService service,
-                                BleCharacteristic characteristic) {
-                              setState(() {
-                                selectedCharacteristic = (
-                                  service: service,
-                                  characteristic: characteristic
-                                );
-                              });
-                            },
-                          ),
-                  ),
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: <Widget>[
+                    PlatformButton(
+                      text: 'Connect',
+                      enabled: !isConnected,
+                      onPressed: () async {
+                        try {
+                          await UniversalBle.connect(
+                            widget.deviceId,
+                          );
+                          _addLog("ConnectionResult", true);
+                        } catch (e) {
+                          _addLog('ConnectError (${e.runtimeType})', e);
+                        }
+                      },
+                    ),
+                    PlatformButton(
+                      text: 'Disconnect',
+                      enabled: isConnected,
+                      onPressed: () {
+                        UniversalBle.disconnect(widget.deviceId);
+                      },
+                    ),
+                  ],
                 ),
-              Expanded(
-                flex: 3,
-                child: Align(
-                  alignment: Alignment.topCenter,
-                  child: SingleChildScrollView(
-                    child: Column(
-                      children: [
-                        // Top buttons
-                        Padding(
-                          padding: const EdgeInsets.all(8.0),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: <Widget>[
-                              PlatformButton(
-                                text: 'Connect',
-                                enabled: !isConnected,
-                                onPressed: () async {
-                                  try {
-                                    await UniversalBle.connect(
-                                      widget.deviceId,
-                                    );
-                                    _addLog("ConnectionResult", true);
-                                  } catch (e) {
-                                    _addLog(
-                                        'ConnectError (${e.runtimeType})', e);
-                                  }
-                                },
-                              ),
-                              PlatformButton(
-                                text: 'Disconnect',
-                                enabled: isConnected,
-                                onPressed: () {
-                                  UniversalBle.disconnect(widget.deviceId);
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
+              ),
 
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  const Text(
-                                    'True Score',
-                                    style: TextStyle(fontSize: 16),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    trueScore,
-                                    style: TextStyle(fontSize: 50),
-                                  )
-                                ],
-                              ),
-                            ),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  const Text(
-                                    'False Score',
-                                    style: TextStyle(fontSize: 16),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    falseScore,
-                                    style: TextStyle(fontSize: 50),
-                                  )
-                                ],
-                              ),
-                            ),
-                          ],
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        const Text(
+                          'True Score',
+                          style: TextStyle(fontSize: 16),
                         ),
-                        if (_hasSelectedCharacteristicProperty([
-                          CharacteristicProperty.write,
-                          CharacteristicProperty.writeWithoutResponse
-                        ]))
-                          Padding(
-                            padding: const EdgeInsets.all(16.0),
+                        const SizedBox(height: 8),
+                        Text(
+                          trueScore,
+                          style: TextStyle(fontSize: 50),
+                        )
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        const Text(
+                          'False Score',
+                          style: TextStyle(fontSize: 16),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          falseScore,
+                          style: TextStyle(fontSize: 50),
+                        )
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              if (_hasSelectedCharacteristicProperty([
+                CharacteristicProperty.write,
+                CharacteristicProperty.writeWithoutResponse
+              ]))
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: <Widget>[
+                      Row(
+                        children: [
+                          Expanded(
                             child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: <Widget>[
-                                // Dropdown
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: [
-                                    const Text(
-                                      'Select Mode:',
-                                      style: TextStyle(fontSize: 16),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    DropdownButton<String>(
-                                      value: modeValue,
-                                      onChanged: (String? newValue) {
-                                        setState(() {
-                                          modeValue = newValue!;
-                                        });
-                                      },
-                                      items: <String>['RANDOM', 'FREQUENTLY']
-                                          .map<DropdownMenuItem<String>>(
-                                              (String value) {
-                                        return DropdownMenuItem<String>(
-                                          value: value,
-                                          child: Text(value),
-                                        );
-                                      }).toList(),
-                                    ),
-                                  ],
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Mode',
+                                  style: TextStyle(fontSize: 16),
                                 ),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.center,
-                                        children: [
-                                          const Text(
-                                            'Color On',
-                                            style: TextStyle(fontSize: 16),
-                                          ),
-                                          const SizedBox(height: 8),
-                                          DropdownButton<String>(
-                                            value: colorOnValue,
-                                            onChanged: (String? newValue) {
-                                              setState(() {
-                                                colorOnValue = newValue!;
-                                              });
-                                            },
-                                            items: <String>[
-                                              'RED',
-                                              'WHITE',
-                                              'YELLOW',
-                                              'BLUE',
-                                              'RANDOM'
-                                            ].map<DropdownMenuItem<String>>(
-                                                (String value) {
-                                              return DropdownMenuItem<String>(
-                                                value: value,
-                                                child: Text(value),
-                                              );
-                                            }).toList(),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(
-                                        width: 16), // Space between two fields
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          const Text(
-                                            'Color Off',
-                                            style: TextStyle(fontSize: 16),
-                                          ),
-                                          const SizedBox(height: 8),
-                                          DropdownButton<String>(
-                                            value: colorOffValue,
-                                            onChanged: (String? newValue) {
-                                              setState(() {
-                                                colorOffValue = newValue!;
-                                              });
-                                            },
-                                            items: <String>[
-                                              'RED',
-                                              'WHITE',
-                                              'YELLOW',
-                                              'BLUE',
-                                              'OFF',
-                                              'RANDOM'
-                                            ].map<DropdownMenuItem<String>>(
-                                                (String value) {
-                                              return DropdownMenuItem<String>(
-                                                value: value,
-                                                child: Text(value),
-                                              );
-                                            }).toList(),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 20),
-                                // Row with Two Text Fields
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          const Text(
-                                            'Time Play (s)',
-                                            style: TextStyle(fontSize: 16),
-                                          ),
-                                          const SizedBox(height: 8),
-                                          TextField(
-                                            controller: timePlayController,
-                                            keyboardType: TextInputType.number,
-                                            decoration: const InputDecoration(
-                                              border: OutlineInputBorder(),
-                                              hintText: 'giây',
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(
-                                        width: 16), // Space between two fields
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          const Text(
-                                            'Time On (ms)',
-                                            style: TextStyle(fontSize: 16),
-                                          ),
-                                          const SizedBox(height: 8),
-                                          TextField(
-                                            controller: timeOnController,
-                                            keyboardType: TextInputType.number,
-                                            decoration: const InputDecoration(
-                                              border: OutlineInputBorder(),
-                                              hintText: 'mili giây',
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(
-                                        width: 16), // Space between two fields
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          const Text(
-                                            'Time Delay (ms)',
-                                            style: TextStyle(fontSize: 16),
-                                          ),
-                                          const SizedBox(height: 8),
-                                          TextField(
-                                            controller: timeOffController,
-                                            keyboardType: TextInputType.number,
-                                            decoration: const InputDecoration(
-                                              border: OutlineInputBorder(),
-                                              hintText: 'mili giây',
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 20),
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceAround,
-                                  children: [
-                                    ElevatedButton(
-                                      onPressed: _stop,
-                                      child: const Text('Stop'),
-                                    ),
-                                    const SizedBox(
-                                        width: 26), // Space between two fields
-                                    ElevatedButton(
-                                      onPressed: _start,
-                                      child: const Text('Start'),
-                                    ),
-                                    const SizedBox(
-                                        width: 26), // Space between two fields
-                                    ElevatedButton(
-                                      onPressed: _setup,
-                                      child: const Text('Setup'),
-                                    ),
-                                  ],
+                                const SizedBox(height: 8),
+                                DropdownButtonFormField<String>(
+                                  value: modeValue,
+                                  decoration: const InputDecoration(
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  items: ['RANDOM', 'SEQUENCE']
+                                      .map((String value) {
+                                    return DropdownMenuItem<String>(
+                                      value: value,
+                                      child: Text(value),
+                                    );
+                                  }).toList(),
+                                  onChanged: (String? newValue) {
+                                    if (newValue != null) {
+                                      setState(() {
+                                        modeValue = newValue;
+                                      });
+                                    }
+                                  },
                                 ),
                               ],
                             ),
                           ),
-                        const Divider(),
-                        if (deviceType != DeviceType.desktop)
-                          ServicesListWidget(
-                            discoveredServices: discoveredServices,
-                            onTap: (BleService service,
-                                BleCharacteristic characteristic) {
-                              setState(() {
-                                selectedCharacteristic = (
-                                  service: service,
-                                  characteristic: characteristic
-                                );
-                              });
-                            },
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Color On',
+                                  style: TextStyle(fontSize: 16),
+                                ),
+                                const SizedBox(height: 8),
+                                DropdownButtonFormField<String>(
+                                  value: colorOnValue,
+                                  decoration: const InputDecoration(
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  items: [
+                                    'RED',
+                                    'WHITE',
+                                    'BLUE',
+                                    'YELLOW',
+                                    'RANDOM'
+                                  ].map((String value) {
+                                    return DropdownMenuItem<String>(
+                                      value: value,
+                                      child: Text(value),
+                                    );
+                                  }).toList(),
+                                  onChanged: (String? newValue) {
+                                    if (newValue != null) {
+                                      setState(() {
+                                        colorOnValue = newValue;
+                                      });
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
                           ),
-                        const Divider(),
-                        ResultWidget(
-                            results: _logs,
-                            onClearTap: (int? index) {
-                              setState(() {
-                                if (index != null) {
-                                  _logs.removeAt(index);
-                                } else {
-                                  _logs.clear();
-                                }
-                              });
-                            }),
-                        const SizedBox(height: 20),
-                      ],
-                    ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Color Off',
+                                  style: TextStyle(fontSize: 16),
+                                ),
+                                const SizedBox(height: 8),
+                                DropdownButtonFormField<String>(
+                                  value: colorOffValue,
+                                  decoration: const InputDecoration(
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  items: [
+                                    'RED',
+                                    'WHITE',
+                                    'BLUE',
+                                    'YELLOW',
+                                    'OFF',
+                                    'RANDOM',
+                                  ].map((String value) {
+                                    return DropdownMenuItem<String>(
+                                      value: value,
+                                      child: Text(value),
+                                    );
+                                  }).toList(),
+                                  onChanged: (String? newValue) {
+                                    if (newValue != null) {
+                                      setState(() {
+                                        colorOffValue = newValue;
+                                      });
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Time Play (s)',
+                                  style: TextStyle(fontSize: 16),
+                                ),
+                                const SizedBox(height: 8),
+                                TextField(
+                                  controller: timePlayController,
+                                  keyboardType: TextInputType.number,
+                                  decoration: const InputDecoration(
+                                    border: OutlineInputBorder(),
+                                    hintText: 'giây',
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Time On (ms)',
+                                  style: TextStyle(fontSize: 16),
+                                ),
+                                const SizedBox(height: 8),
+                                TextField(
+                                  controller: timeOnController,
+                                  keyboardType: TextInputType.number,
+                                  decoration: const InputDecoration(
+                                    border: OutlineInputBorder(),
+                                    hintText: 'mili giây',
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Time Delay (ms)',
+                                  style: TextStyle(fontSize: 16),
+                                ),
+                                const SizedBox(height: 8),
+                                TextField(
+                                  controller: timeOffController,
+                                  keyboardType: TextInputType.number,
+                                  decoration: const InputDecoration(
+                                    border: OutlineInputBorder(),
+                                    hintText: 'mili giây',
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          ElevatedButton(
+                            onPressed: _stop,
+                            child: const Text('Stop'),
+                          ),
+                          const SizedBox(width: 26),
+                          ElevatedButton(
+                            onPressed: _start,
+                            child: const Text('Start'),
+                          ),
+                          const SizedBox(width: 26),
+                          ElevatedButton(
+                            onPressed: _setup,
+                            child: const Text('Setup'),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-              ),
+              const Divider(),
+              ResultWidget(
+                  results: _logs,
+                  onClearTap: (int? index) {
+                    setState(() {
+                      if (index != null) {
+                        _logs.removeAt(index);
+                      } else {
+                        _logs.clear();
+                      }
+                    });
+                  }),
+              const SizedBox(height: 20),
+              // Active Nodes Circles
+              if (isConnected)
+                Container(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(10, (index) {
+                          return Padding(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 4.0),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              width: 20,
+                              height: 20,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: activeNodes[index]
+                                    ? Colors.green
+                                    : Colors.white,
+                                border: Border.all(
+                                  color: Colors.grey[400]!,
+                                  width: 1,
+                                ),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  '$index',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: activeNodes[index]
+                                        ? Colors.white
+                                        : Colors.black,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(10, (index) {
+                          return Padding(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 4.0),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              width: 20,
+                              height: 20,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: activeNodes[index + 10]
+                                    ? Colors.green
+                                    : Colors.white,
+                                border: Border.all(
+                                  color: Colors.grey[400]!,
+                                  width: 1,
+                                ),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  '${index + 10}',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: activeNodes[index + 10]
+                                        ? Colors.white
+                                        : Colors.black,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 20),
             ],
-          );
-        }),
-        onTap: () {
-          FocusScope.of(context).requestFocus(new FocusNode());
-        },
+          ),
+        ),
       ),
     );
   }
