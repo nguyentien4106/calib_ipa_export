@@ -28,6 +28,8 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
   bool isConnected = false;
   bool isSubscribe = false;
   AppState state = AppState.initial;
+  List<String> notifications = [];
+  Timer? _notificationTimer;
 
   String trueScore = '';
   String falseScore = '';
@@ -58,6 +60,7 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
 
   @override
   void dispose() {
+    _notificationTimer?.cancel();
     super.dispose();
     UniversalBle.onConnectionChange = null;
     UniversalBle.onValueChange = null;
@@ -246,12 +249,21 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
   }
 
   void notify(String text) {
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(text),
-      ),
-    );
+    setState(() {
+      notifications.insert(0, text); // Add to the beginning of the list (LIFO)
+    });
+
+    // Remove the notification after 3 seconds
+    _notificationTimer?.cancel();
+    _notificationTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) {
+        setState(() {
+          if (notifications.isNotEmpty) {
+            notifications.removeLast(); // Remove the oldest notification
+          }
+        });
+      }
+    });
   }
 
   Future<void> _stop() async {
@@ -326,406 +338,551 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("${widget.deviceName}"),
-        elevation: 4,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Icon(
-              isConnected
-                  ? Icons.bluetooth_connected
-                  : Icons.bluetooth_disabled,
-              color: isConnected ? Colors.greenAccent : Colors.red,
-              size: 20,
-            ),
-          )
-        ],
-      ),
-      body: GestureDetector(
-        onTap: () {
-          FocusScope.of(context).requestFocus(new FocusNode());
-        },
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
+    return Stack(
+      children: [
+        Scaffold(
+          appBar: AppBar(
+            title: Text("${widget.deviceName}"),
+            elevation: 4,
+            backgroundColor: Colors.blue,
+            foregroundColor: Colors.white,
+            actions: [
               Padding(
                 padding: const EdgeInsets.all(8.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: <Widget>[
-                    PlatformButton(
-                      text: 'Connect',
-                      enabled: !isConnected,
-                      onPressed: () async {
-                        try {
-                          await UniversalBle.connect(
-                            widget.deviceId,
-                          );
-                          _addLog("ConnectionResult", true);
-                        } catch (e) {
-                          _addLog('ConnectError (${e.runtimeType})', e);
-                        }
-                      },
+                child: Icon(
+                  isConnected
+                      ? Icons.bluetooth_connected
+                      : Icons.bluetooth_disabled,
+                  color: isConnected ? Colors.greenAccent : Colors.red,
+                  size: 24,
+                ),
+              )
+            ],
+          ),
+          body: GestureDetector(
+            onTap: () {
+              FocusScope.of(context).requestFocus(new FocusNode());
+            },
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  // Connection Status Card
+                  Card(
+                    margin: const EdgeInsets.all(16),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: <Widget>[
+                          ElevatedButton.icon(
+                            icon: const Icon(Icons.bluetooth),
+                            label: const Text('Connect'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 24, vertical: 12),
+                            ),
+                            onPressed: !isConnected
+                                ? () async {
+                                    try {
+                                      await UniversalBle.connect(
+                                          widget.deviceId);
+                                      _addLog("ConnectionResult", true);
+                                    } catch (e) {
+                                      _addLog(
+                                          'ConnectError (${e.runtimeType})', e);
+                                    }
+                                  }
+                                : null,
+                          ),
+                          ElevatedButton.icon(
+                            icon: const Icon(Icons.bluetooth_disabled),
+                            label: const Text('Disconnect'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 24, vertical: 12),
+                            ),
+                            onPressed: isConnected
+                                ? () {
+                                    UniversalBle.disconnect(widget.deviceId);
+                                  }
+                                : null,
+                          ),
+                        ],
+                      ),
                     ),
-                    PlatformButton(
-                      text: 'Disconnect',
-                      enabled: isConnected,
-                      onPressed: () {
-                        UniversalBle.disconnect(widget.deviceId);
-                      },
+                  ),
+
+                  // Score Display Card
+                  Card(
+                    margin: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                const Text(
+                                  'True Score',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.green,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  trueScore,
+                                  style: const TextStyle(
+                                    fontSize: 48,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                )
+                              ],
+                            ),
+                          ),
+                          Container(
+                            width: 1,
+                            height: 60,
+                            color: Colors.grey[300],
+                          ),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                const Text(
+                                  'False Score',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.red,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  falseScore,
+                                  style: const TextStyle(
+                                    fontSize: 48,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                )
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  if (_hasSelectedCharacteristicProperty([
+                    CharacteristicProperty.write,
+                    CharacteristicProperty.writeWithoutResponse
+                  ]))
+                    // Control Panel Card
+                    Card(
+                      margin: const EdgeInsets.all(16),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Control Panel',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            // Mode and Colors Row
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Mode',
+                                        style: TextStyle(fontSize: 16),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      DropdownButtonFormField<String>(
+                                        value: modeValue,
+                                        decoration: const InputDecoration(
+                                          border: OutlineInputBorder(),
+                                        ),
+                                        items: ['RANDOM', 'SEQUENCE']
+                                            .map((String value) {
+                                          return DropdownMenuItem<String>(
+                                            value: value,
+                                            child: Text(value),
+                                          );
+                                        }).toList(),
+                                        onChanged: (String? newValue) {
+                                          if (newValue != null) {
+                                            setState(() {
+                                              modeValue = newValue;
+                                            });
+                                          }
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Color On',
+                                        style: TextStyle(fontSize: 16),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      DropdownButtonFormField<String>(
+                                        value: colorOnValue,
+                                        decoration: const InputDecoration(
+                                          border: OutlineInputBorder(),
+                                        ),
+                                        items: [
+                                          'RED',
+                                          'WHITE',
+                                          'BLUE',
+                                          'YELLOW',
+                                          'RANDOM'
+                                        ].map((String value) {
+                                          return DropdownMenuItem<String>(
+                                            value: value,
+                                            child: Text(value),
+                                          );
+                                        }).toList(),
+                                        onChanged: (String? newValue) {
+                                          if (newValue != null) {
+                                            setState(() {
+                                              colorOnValue = newValue;
+                                            });
+                                          }
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Color Off',
+                                        style: TextStyle(fontSize: 16),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      DropdownButtonFormField<String>(
+                                        value: colorOffValue,
+                                        decoration: const InputDecoration(
+                                          border: OutlineInputBorder(),
+                                        ),
+                                        items: [
+                                          'RED',
+                                          'WHITE',
+                                          'BLUE',
+                                          'YELLOW',
+                                          'OFF',
+                                          'RANDOM'
+                                        ].map((String value) {
+                                          return DropdownMenuItem<String>(
+                                            value: value,
+                                            child: Text(value),
+                                          );
+                                        }).toList(),
+                                        onChanged: (String? newValue) {
+                                          if (newValue != null) {
+                                            setState(() {
+                                              colorOffValue = newValue;
+                                            });
+                                          }
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            // Time Inputs Row
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Time Play (s)',
+                                        style: TextStyle(fontSize: 16),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      TextField(
+                                        controller: timePlayController,
+                                        keyboardType: TextInputType.number,
+                                        decoration: const InputDecoration(
+                                          border: OutlineInputBorder(),
+                                          hintText: 'seconds',
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Time On (ms)',
+                                        style: TextStyle(fontSize: 16),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      TextField(
+                                        controller: timeOnController,
+                                        keyboardType: TextInputType.number,
+                                        decoration: const InputDecoration(
+                                          border: OutlineInputBorder(),
+                                          hintText: 'milliseconds',
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Time Delay (ms)',
+                                        style: TextStyle(fontSize: 16),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      TextField(
+                                        controller: timeOffController,
+                                        keyboardType: TextInputType.number,
+                                        decoration: const InputDecoration(
+                                          border: OutlineInputBorder(),
+                                          hintText: 'milliseconds',
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 24),
+                            // Control Buttons
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              children: [
+                                ElevatedButton.icon(
+                                  icon: const Icon(Icons.stop),
+                                  label: const Text('Stop'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.red,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 24, vertical: 12),
+                                  ),
+                                  onPressed: _stop,
+                                ),
+                                ElevatedButton.icon(
+                                  icon: const Icon(Icons.play_arrow),
+                                  label: const Text('Start'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 24, vertical: 12),
+                                  ),
+                                  onPressed: _start,
+                                ),
+                                ElevatedButton.icon(
+                                  icon: const Icon(Icons.settings),
+                                  label: const Text('Setup'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.blue,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 24, vertical: 12),
+                                  ),
+                                  onPressed: _setup,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                  // Active Nodes Display
+                  if (isConnected)
+                    Card(
+                      margin: const EdgeInsets.all(16),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Active Nodes',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: List.generate(10, (index) {
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 4.0),
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 200),
+                                    width: 24,
+                                    height: 24,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: activeNodes[index]
+                                          ? Colors.green
+                                          : Colors.white,
+                                      border: Border.all(
+                                        color: Colors.grey[400]!,
+                                        width: 1,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.grey.withOpacity(0.2),
+                                          spreadRadius: 1,
+                                          blurRadius: 2,
+                                          offset: const Offset(0, 1),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        '$index',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: activeNodes[index]
+                                              ? Colors.white
+                                              : Colors.black,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }),
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: List.generate(10, (index) {
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 4.0),
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 200),
+                                    width: 24,
+                                    height: 24,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: activeNodes[index + 10]
+                                          ? Colors.green
+                                          : Colors.white,
+                                      border: Border.all(
+                                        color: Colors.grey[400]!,
+                                        width: 1,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.grey.withOpacity(0.2),
+                                          spreadRadius: 1,
+                                          blurRadius: 2,
+                                          offset: const Offset(0, 1),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        '${index + 10}',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: activeNodes[index + 10]
+                                              ? Colors.white
+                                              : Colors.black,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        // Notification Overlay
+        if (notifications.isNotEmpty)
+          Positioned(
+            top: MediaQuery.of(context).size.height * 0.4,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                margin: const EdgeInsets.symmetric(horizontal: 20),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.black87,
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
                     ),
                   ],
                 ),
-              ),
-
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        const Text(
-                          'True Score',
-                          style: TextStyle(fontSize: 16),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          trueScore,
-                          style: TextStyle(fontSize: 50),
-                        )
-                      ],
-                    ),
+                child: Text(
+                  notifications.first,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
                   ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        const Text(
-                          'False Score',
-                          style: TextStyle(fontSize: 16),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          falseScore,
-                          style: TextStyle(fontSize: 50),
-                        )
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              if (_hasSelectedCharacteristicProperty([
-                CharacteristicProperty.write,
-                CharacteristicProperty.writeWithoutResponse
-              ]))
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: <Widget>[
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Mode',
-                                  style: TextStyle(fontSize: 16),
-                                ),
-                                const SizedBox(height: 8),
-                                DropdownButtonFormField<String>(
-                                  value: modeValue,
-                                  decoration: const InputDecoration(
-                                    border: OutlineInputBorder(),
-                                  ),
-                                  items: ['RANDOM', 'SEQUENCE']
-                                      .map((String value) {
-                                    return DropdownMenuItem<String>(
-                                      value: value,
-                                      child: Text(value),
-                                    );
-                                  }).toList(),
-                                  onChanged: (String? newValue) {
-                                    if (newValue != null) {
-                                      setState(() {
-                                        modeValue = newValue;
-                                      });
-                                    }
-                                  },
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Color On',
-                                  style: TextStyle(fontSize: 16),
-                                ),
-                                const SizedBox(height: 8),
-                                DropdownButtonFormField<String>(
-                                  value: colorOnValue,
-                                  decoration: const InputDecoration(
-                                    border: OutlineInputBorder(),
-                                  ),
-                                  items: [
-                                    'RED',
-                                    'WHITE',
-                                    'BLUE',
-                                    'YELLOW',
-                                    'RANDOM'
-                                  ].map((String value) {
-                                    return DropdownMenuItem<String>(
-                                      value: value,
-                                      child: Text(value),
-                                    );
-                                  }).toList(),
-                                  onChanged: (String? newValue) {
-                                    if (newValue != null) {
-                                      setState(() {
-                                        colorOnValue = newValue;
-                                      });
-                                    }
-                                  },
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Color Off',
-                                  style: TextStyle(fontSize: 16),
-                                ),
-                                const SizedBox(height: 8),
-                                DropdownButtonFormField<String>(
-                                  value: colorOffValue,
-                                  decoration: const InputDecoration(
-                                    border: OutlineInputBorder(),
-                                  ),
-                                  items: [
-                                    'RED',
-                                    'WHITE',
-                                    'BLUE',
-                                    'YELLOW',
-                                    'OFF',
-                                    'RANDOM',
-                                  ].map((String value) {
-                                    return DropdownMenuItem<String>(
-                                      value: value,
-                                      child: Text(value),
-                                    );
-                                  }).toList(),
-                                  onChanged: (String? newValue) {
-                                    if (newValue != null) {
-                                      setState(() {
-                                        colorOffValue = newValue;
-                                      });
-                                    }
-                                  },
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Time Play (s)',
-                                  style: TextStyle(fontSize: 16),
-                                ),
-                                const SizedBox(height: 8),
-                                TextField(
-                                  controller: timePlayController,
-                                  keyboardType: TextInputType.number,
-                                  decoration: const InputDecoration(
-                                    border: OutlineInputBorder(),
-                                    hintText: 'giây',
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Time On (ms)',
-                                  style: TextStyle(fontSize: 16),
-                                ),
-                                const SizedBox(height: 8),
-                                TextField(
-                                  controller: timeOnController,
-                                  keyboardType: TextInputType.number,
-                                  decoration: const InputDecoration(
-                                    border: OutlineInputBorder(),
-                                    hintText: 'mili giây',
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Time Delay (ms)',
-                                  style: TextStyle(fontSize: 16),
-                                ),
-                                const SizedBox(height: 8),
-                                TextField(
-                                  controller: timeOffController,
-                                  keyboardType: TextInputType.number,
-                                  decoration: const InputDecoration(
-                                    border: OutlineInputBorder(),
-                                    hintText: 'mili giây',
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: [
-                          ElevatedButton(
-                            onPressed: _stop,
-                            child: const Text('Stop'),
-                          ),
-                          const SizedBox(width: 26),
-                          ElevatedButton(
-                            onPressed: _start,
-                            child: const Text('Start'),
-                          ),
-                          const SizedBox(width: 26),
-                          ElevatedButton(
-                            onPressed: _setup,
-                            child: const Text('Setup'),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                  textAlign: TextAlign.center,
                 ),
-              const Divider(),
-              ResultWidget(
-                  results: _logs,
-                  onClearTap: (int? index) {
-                    setState(() {
-                      if (index != null) {
-                        _logs.removeAt(index);
-                      } else {
-                        _logs.clear();
-                      }
-                    });
-                  }),
-              const SizedBox(height: 20),
-              // Active Nodes Circles
-              if (isConnected)
-                Container(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: List.generate(10, (index) {
-                          return Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 4.0),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              width: 20,
-                              height: 20,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: activeNodes[index]
-                                    ? Colors.green
-                                    : Colors.white,
-                                border: Border.all(
-                                  color: Colors.grey[400]!,
-                                  width: 1,
-                                ),
-                              ),
-                              child: Center(
-                                child: Text(
-                                  '$index',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: activeNodes[index]
-                                        ? Colors.white
-                                        : Colors.black,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        }),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: List.generate(10, (index) {
-                          return Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 4.0),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              width: 20,
-                              height: 20,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: activeNodes[index + 10]
-                                    ? Colors.green
-                                    : Colors.white,
-                                border: Border.all(
-                                  color: Colors.grey[400]!,
-                                  width: 1,
-                                ),
-                              ),
-                              child: Center(
-                                child: Text(
-                                  '${index + 10}',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: activeNodes[index + 10]
-                                        ? Colors.white
-                                        : Colors.black,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        }),
-                      ),
-                    ],
-                  ),
-                ),
-              const SizedBox(height: 20),
-            ],
+              ),
+            ),
           ),
-        ),
-      ),
+      ],
     );
   }
 

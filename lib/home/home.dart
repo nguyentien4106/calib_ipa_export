@@ -47,7 +47,11 @@ class _MyAppState extends State<MyApp> {
     };
 
     UniversalBle.onScanResult = (result) {
-      // log(result.toString());
+      // Skip unknown devices
+      if (result.name == null || result.name!.isEmpty) {
+        return;
+      }
+
       int index = _bleDevices.indexWhere((e) => e.deviceId == result.deviceId);
       if (index == -1) {
         _bleDevices.add(result);
@@ -100,146 +104,160 @@ class _MyAppState extends State<MyApp> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Universal BLE'),
+        title: const Text('BLE Device Scanner'),
         elevation: 4,
+        backgroundColor: Colors.blue,
+        foregroundColor: Colors.white,
         actions: [
+          // Bluetooth Status
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(
+              color: bleAvailabilityState == AvailabilityState.poweredOn
+                  ? Colors.green.shade100
+                  : Colors.red.shade100,
+              border: Border.all(
+                color: bleAvailabilityState == AvailabilityState.poweredOn
+                    ? Colors.green.shade300
+                    : Colors.red.shade300,
+                width: 1,
+              ),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  bleAvailabilityState == AvailabilityState.poweredOn
+                      ? Icons.bluetooth_connected
+                      : Icons.bluetooth_disabled,
+                  color: bleAvailabilityState == AvailabilityState.poweredOn
+                      ? Colors.green.shade700
+                      : Colors.red.shade700,
+                  size: 20,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  bleAvailabilityState == AvailabilityState.poweredOn
+                      ? 'ON'
+                      : 'OFF',
+                  style: TextStyle(
+                    color: bleAvailabilityState == AvailabilityState.poweredOn
+                        ? Colors.green.shade700
+                        : Colors.red.shade700,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
           if (_isScanning)
             const Padding(
               padding: EdgeInsets.all(8.0),
               child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator.adaptive(
-                    strokeWidth: 2,
-                  )),
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator.adaptive(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
             ),
         ],
       ),
       body: Column(
         children: [
+          // Scan Controls
           Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: ResponsiveButtonsGrid(
+            padding: const EdgeInsets.all(16),
+            child: Row(
               children: [
-                PlatformButton(
-                  text: 'Start Scan',
-                  onPressed: () async {
-                    setState(() {
-                      _bleDevices.clear();
-                      _isScanning = true;
-                    });
-                    try {
-                      await startScan();
-                    } catch (e) {
-                      setState(() {
-                        _isScanning = false;
-                      });
-                      showSnackbar(e);
-                    }
-                  },
-                ),
-                PlatformButton(
-                  text: 'Stop Scan',
-                  onPressed: () async {
-                    await UniversalBle.stopScan();
-                    setState(() {
-                      _isScanning = false;
-                    });
-                  },
-                ),
-                if (BleCapabilities.supportsBluetoothEnableApi)
-                  bleAvailabilityState != AvailabilityState.poweredOn
-                      ? PlatformButton(
-                          text: 'Enable Bluetooth',
-                          onPressed: () async {
-                            bool isEnabled =
-                                await UniversalBle.enableBluetooth();
-                            showSnackbar("BluetoothEnabled: $isEnabled");
-                          },
-                        )
-                      : PlatformButton(
-                          text: 'Disable Bluetooth',
-                          onPressed: () async {
-                            bool isDisabled =
-                                await UniversalBle.disableBluetooth();
-                            showSnackbar("BluetoothDisabled: $isDisabled");
-                          },
-                        ),
-                if (BleCapabilities.requiresRuntimePermission)
-                  PlatformButton(
-                    text: 'Check Permissions',
-                    onPressed: () async {
-                      bool hasPermissions =
-                          await PermissionHandler.arePermissionsGranted();
-                      if (hasPermissions) {
-                        showSnackbar("Permissions granted");
-                      }
-                    },
+                Expanded(
+                  child: ElevatedButton.icon(
+                    icon: Icon(_isScanning ? Icons.stop : Icons.search),
+                    label: Text(_isScanning ? 'Stop Scan' : 'Start Scan'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _isScanning ? Colors.red : Colors.blue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                    onPressed:
+                        bleAvailabilityState != AvailabilityState.poweredOn
+                            ? null
+                            : () async {
+                                if (_isScanning) {
+                                  await UniversalBle.stopScan();
+                                  setState(() {
+                                    _isScanning = false;
+                                  });
+                                } else {
+                                  setState(() {
+                                    _bleDevices.clear();
+                                    _isScanning = true;
+                                  });
+                                  try {
+                                    await startScan();
+                                  } catch (e) {
+                                    setState(() {
+                                      _isScanning = false;
+                                    });
+                                    showSnackbar(e);
+                                  }
+                                }
+                              },
                   ),
-                if (BleCapabilities.supportsConnectedDevicesApi)
-                  PlatformButton(
-                    text: 'Connected Devices',
-                    onPressed: () async {
-                      List<BleDevice> devices =
-                          await UniversalBle.getSystemDevices();
-                      if (devices.isEmpty) {
-                        showSnackbar("No Connected Devices Found");
-                      }
-                      setState(() {
-                        _bleDevices.clear();
-                        _bleDevices.addAll(devices);
-                      });
-                    },
-                  ),
-                // PlatformButton(
-                //   text: 'Queue: ${_queueType.name}',
-                //   onPressed: () {
-                //     setState(() {
-                //       _queueType = switch (_queueType) {
-                //         QueueType.global => QueueType.perDevice,
-                //         QueueType.perDevice => QueueType.none,
-                //         QueueType.none => QueueType.global,
-                //       };
-                //       UniversalBle.queueType = _queueType;
-                //     });
-                //   },
-                // ),
-                PlatformButton(
-                  text: 'Scan Filters',
-                  onPressed: _showScanFilterBottomSheet,
                 ),
-                if (_bleDevices.isNotEmpty)
-                  PlatformButton(
-                    text: 'Clear List',
+                if (_bleDevices.isNotEmpty) ...[
+                  const SizedBox(width: 16),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.clear_all),
+                    label: const Text('Clear'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.grey,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
                     onPressed: () {
                       setState(() {
                         _bleDevices.clear();
                       });
                     },
                   ),
+                ],
               ],
             ),
           ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Text(
-                  'Ble Availability : ${bleAvailabilityState?.name}',
-                ),
-              ),
-            ],
-          ),
-          const Divider(color: Colors.blue),
+
+          const SizedBox(height: 16),
+
+          // Device List
           Expanded(
             child: _isScanning && _bleDevices.isEmpty
-                ? const Center(child: CircularProgressIndicator.adaptive())
+                ? const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator.adaptive(),
+                        SizedBox(height: 16),
+                        Text(
+                          'Scanning for devices...',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
                 : !_isScanning && _bleDevices.isEmpty
                     ? const ScannedDevicesPlaceholderWidget()
                     : ListView.separated(
+                        padding: const EdgeInsets.all(16),
                         itemCount: _bleDevices.length,
-                        separatorBuilder: (context, index) => const Divider(),
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(height: 8),
                         itemBuilder: (context, index) {
                           BleDevice device =
                               _bleDevices[_bleDevices.length - index - 1];
@@ -247,13 +265,14 @@ class _MyAppState extends State<MyApp> {
                             bleDevice: device,
                             onTap: () {
                               Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => PeripheralDetailPage(
-                                      device.deviceId,
-                                      device.name ?? "Unknown Peripheral",
-                                    ),
-                                  ));
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => PeripheralDetailPage(
+                                    device.deviceId,
+                                    device.name ?? "Unknown Device",
+                                  ),
+                                ),
+                              );
                               UniversalBle.stopScan();
                               setState(() {
                                 _isScanning = false;
