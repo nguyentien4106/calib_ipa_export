@@ -30,6 +30,8 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
   AppState state = AppState.initial;
   List<String> notifications = [];
   Timer? _notificationTimer;
+  Timer? _elapsedTimer;
+  Duration _elapsedTime = Duration.zero;
 
   String trueScore = '';
   String falseScore = '';
@@ -61,10 +63,10 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
   @override
   void dispose() {
     _notificationTimer?.cancel();
+    _elapsedTimer?.cancel();
     super.dispose();
     UniversalBle.onConnectionChange = null;
     UniversalBle.onValueChange = null;
-    // Disconnect when leaving the page
     if (isConnected) UniversalBle.disconnect(widget.deviceId);
   }
 
@@ -135,17 +137,17 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
       setState(() {
         falseScore = score;
       });
-    } else if (s.startsWith('act')) {
+    } else {
       // Handle node activation states
       try {
-        List<String> values = s.split('~');
-        if (values.length >= 21) {
+        List<String> values = s.split('');
+        if (values.length >= 20) {
           // "act" + 20 values
           setState(() {
             // Update all 20 nodes based on received values
             for (int i = 0; i < 20; i++) {
               activeNodes[i] =
-                  values[i + 1] == "1"; // Convert "1" to true, "0" to false
+                  values[i] == "1"; // Convert "1" to true, "0" to false
             }
           });
         }
@@ -249,21 +251,49 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
   }
 
   void notify(String text) {
+    // Cancel any existing timer
+    _notificationTimer?.cancel();
+
     setState(() {
       notifications.insert(0, text); // Add to the beginning of the list (LIFO)
     });
 
-    // Remove the notification after 3 seconds
-    _notificationTimer?.cancel();
+    // Set up new timer to remove the notification after 3 seconds
     _notificationTimer = Timer(const Duration(seconds: 3), () {
       if (mounted) {
         setState(() {
           if (notifications.isNotEmpty) {
-            notifications.removeLast(); // Remove the oldest notification
+            notifications
+                .removeAt(0); // Remove the most recent notification (LIFO)
           }
         });
       }
     });
+  }
+
+  void _startTimer() {
+    _elapsedTime = Duration.zero;
+    _elapsedTimer?.cancel();
+    _elapsedTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      setState(() {
+        _elapsedTime += const Duration(seconds: 1);
+      });
+    });
+  }
+
+  void _stopTimer() {
+    _elapsedTimer?.cancel();
+    setState(() {
+      _elapsedTime = Duration.zero;
+    });
+  }
+
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final hours = twoDigits(duration.inHours);
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return "$hours:$minutes:$seconds";
   }
 
   Future<void> _stop() async {
@@ -273,6 +303,7 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
     }
     Uint8List command = _createRequest("~E");
     bool result = await _write(command);
+    _stopTimer();
     notify('Stop Successfully!');
     setState(() {
       state = AppState.initial;
@@ -287,6 +318,7 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
     }
     Uint8List command = _createRequest("~B");
     bool result = await _write(command);
+    _startTimer();
     setState(() {
       state = AppState.started;
     });
@@ -347,6 +379,34 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
             backgroundColor: Colors.blue,
             foregroundColor: Colors.white,
             actions: [
+              if (state == AppState.started)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  margin: const EdgeInsets.only(right: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.timer,
+                        size: 20,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _formatDuration(_elapsedTime),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               Padding(
                 padding: const EdgeInsets.all(8.0),
                 child: Icon(
@@ -701,7 +761,8 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 24, vertical: 12),
                                   ),
-                                  onPressed: _stop,
+                                  onPressed:
+                                      state == AppState.started ? _stop : null,
                                 ),
                                 ElevatedButton.icon(
                                   icon: const Icon(Icons.play_arrow),
